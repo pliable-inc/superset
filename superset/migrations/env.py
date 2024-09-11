@@ -15,6 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from calendar import c
+import os
+from sqlalchemy import text
 import logging
 import urllib.parse
 from logging.config import fileConfig
@@ -29,6 +32,10 @@ from sqlalchemy import engine_from_config, pool
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+def tenant_uuid_to_superset_schema(tenant_uuid: str):
+    alnum_id = ''.join(char for char in str(tenant_uuid) if char.isalnum())
+    return f"spst_t_{alnum_id}"
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -93,26 +100,36 @@ def run_migrations_online() -> None:
                 directives[:] = []
                 logger.info("No changes in schema detected.")
 
+    # PLB Customization
+
+    tenant_schema = os.environ.get('POSTGRES_SCHEMA_OVERRIDE', None)
+
+    if not tenant_schema:
+        raise Exception("No tenant_uuid found in session or environment")
+
     engine = engine_from_config(
         config.get_section(config.config_ini_section),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={'options': '-csearch_path={}'.format(tenant_schema)}
     )
 
     connection = engine.connect()
     kwargs = {}
-    if engine.name in ("sqlite", "mysql"):
-        kwargs = {"transaction_per_migration": True, "transactional_ddl": True}
-    if configure_args := current_app.extensions["migrate"].configure_args:
-        kwargs.update(configure_args)
 
+    conn = connection.execution_options(schema_translate_map={None: tenant_schema})
+                             
+    conn.dialect.default_schema_name = tenant_schema
+
+    logger.info("Migrating tenant schema %s" % tenant_schema)
     context.configure(
-        connection=connection,
+        version_table_schema=tenant_schema,
+        connection=conn,
         target_metadata=target_metadata,
-        # compare_type=True,
-        process_revision_directives=process_revision_directives,
-        **kwargs,
+        include_schemas=True
     )
+
+    # end PLB Customization
 
     try:
         with context.begin_transaction():
