@@ -105,7 +105,7 @@ setup(
         "nh3>=0.2.11, <0.3",
         "numpy==1.23.5",
         "packaging",
-        "pandas[performance]>=2.0.3, <2.1",
+        "pandas[performance]>=2.1.2, <2.2",
         "parsedatetime",
         "paramiko>=3.4.0",
         "pgsanity",
